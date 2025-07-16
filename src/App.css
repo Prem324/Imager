@@ -104,7 +104,7 @@ h1 {
   cursor: not-allowed;
 }
 
-/* New webcam actions styles */
+/* Webcam actions styles */
 .webcam-actions {
   display: flex;
   flex-direction: column;
@@ -282,13 +282,27 @@ footer {
   padding: 8px 20px;
   border-radius: 20px;
   border: none;
-  background: #6366f1;
   color: #fff;
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;
   transition: background 0.2s;
 }
-.cropper-actions button:hover {
-  background: #4f46e5;
+.cropper-done-btn {
+  background: #22c55e;
+}
+.cropper-done-btn:hover {
+  background: #16a34a;
+}
+.cropper-auto-btn {
+  background: #f59e42;
+}
+.cropper-auto-btn:hover {
+  background: #ea580c;
+}
+.cropper-cancel-btn {
+  background: #ef4444;
+}
+.cropper-cancel-btn:hover {
+  background: #b91c1c;
 }

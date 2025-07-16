@@ -257,9 +257,15 @@ function App() {
               onCropComplete={onCropComplete}
             />
             <div className="cropper-actions">
-              <button onClick={handleCropConfirm}>Crop</button>
-              <button onClick={handleCropCancel}>Cancel</button>
-              <button onClick={handleAutoCrop}>Auto Crop</button>
+              <button className="cropper-done-btn" onClick={handleCropConfirm}>
+                Crop Done
+              </button>
+              <button className="cropper-auto-btn" onClick={handleAutoCrop}>
+                Auto Crop
+              </button>
+              <button className="cropper-cancel-btn" onClick={handleCropCancel}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>
