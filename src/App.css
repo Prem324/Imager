@@ -267,16 +267,36 @@ footer {
   background: #fff;
   padding: 20px;
   border-radius: 12px;
-  max-width: 90vw;
-  max-height: 90vh;
+  max-width: 95vw;
+  max-height: 95vh;
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
+}
+.cropper-area {
+  width: 320px;
+  height: 320px;
+  max-width: 80vw;
+  max-height: 60vw;
+  position: relative;
+  background: #222;
+  border-radius: 10px;
+  overflow: hidden;
+}
+@media (max-width: 500px) {
+  .cropper-area {
+    width: 90vw;
+    height: 60vw;
+    min-height: 200px;
+    min-width: 200px;
+  }
 }
 .cropper-actions {
-  margin-top: 12px;
+  margin-top: 18px;
   display: flex;
   gap: 10px;
+  justify-content: center;
 }
 .cropper-actions button {
   padding: 8px 20px;

@@ -247,15 +247,17 @@ function App() {
       {showCropper && (
         <div className="cropper-modal">
           <div className="cropper-container">
-            <Cropper
-              image={tempImage}
-              crop={crop}
-              zoom={zoom}
-              aspect={mode === 'image' ? 3.5 / 4.5 : 3.5 / 1.5}
-              onCropChange={setCrop}
-              onZoomChange={setZoom}
-              onCropComplete={onCropComplete}
-            />
+            <div className="cropper-area">
+              <Cropper
+                image={tempImage}
+                crop={crop}
+                zoom={zoom}
+                aspect={mode === 'image' ? 3.5 / 4.5 : 3.5 / 1.5}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={onCropComplete}
+              />
+            </div>
             <div className="cropper-actions">
               <button className="cropper-done-btn" onClick={handleCropConfirm}>
                 Crop Done
