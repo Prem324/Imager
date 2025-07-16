@@ -95,13 +95,19 @@ function App() {
     image.src = imageSrc;
     await new Promise((resolve) => (image.onload = resolve));
 
+    // High quality rendering with scale factor
+    const scaleFactor = 2;
     const canvas = document.createElement("canvas");
-    canvas.width = outputWidth;
-    canvas.height = outputHeight;
+    canvas.width = outputWidth * scaleFactor;
+    canvas.height = outputHeight * scaleFactor;
     const ctx = canvas.getContext("2d");
 
+    // Set high quality rendering
+    ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw image at higher resolution
     ctx.drawImage(
       image,
       cropPixels.x,
@@ -110,18 +116,38 @@ function App() {
       cropPixels.height,
       0,
       0,
-      outputWidth,
-      outputHeight
+      canvas.width,
+      canvas.height
+    );
+
+    // Create final canvas at correct size
+    const finalCanvas = document.createElement("canvas");
+    finalCanvas.width = outputWidth;
+    finalCanvas.height = outputHeight;
+    const finalCtx = finalCanvas.getContext("2d");
+    finalCtx.imageSmoothingQuality = "high";
+
+    // Downscale with high quality
+    finalCtx.drawImage(
+      canvas,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+      0,
+      0,
+      finalCanvas.width,
+      finalCanvas.height
     );
 
     return new Promise((resolve) => {
-      canvas.toBlob(
+      finalCanvas.toBlob(
         (blob) => {
           const url = URL.createObjectURL(blob);
-          resolve(url);
+          resolve({ url, size: blob.size });
         },
         "image/jpeg",
-        1.0
+        0.92 // Optimal quality setting
       );
     });
   };
@@ -133,7 +159,7 @@ function App() {
     const heightPx = cmToPx(dimensions.height, isPhoto);
 
     try {
-      const croppedImg = await getCroppedImg(
+      const { url, size } = await getCroppedImg(
         tempImage,
         croppedAreaPixels,
         widthPx,
@@ -145,11 +171,11 @@ function App() {
       setTempImage(null);
 
       if (isPhoto) {
-        setImageSrc(croppedImg);
+        setImageSrc({ url, size });
         setResizedImage(null);
         setImageError("");
       } else {
-        setSignatureSrc(croppedImg);
+        setSignatureSrc({ url, size });
         setResizedSignature(null);
         setSignatureError("");
       }
@@ -170,23 +196,53 @@ function App() {
 
     try {
       const img = new window.Image();
-      img.src = src;
+      img.src = src.url || src;
       await new Promise((resolve) => (img.onload = resolve));
 
+      // High quality rendering with scale factor
+      const scaleFactor = 2;
       const canvas = document.createElement("canvas");
-      const width = cmToPx(dimensions.width, dimensions === IMAGE_DIMENSIONS);
-      const height = cmToPx(dimensions.height, dimensions === IMAGE_DIMENSIONS);
+      const width =
+        cmToPx(dimensions.width, dimensions === IMAGE_DIMENSIONS) * scaleFactor;
+      const height =
+        cmToPx(dimensions.height, dimensions === IMAGE_DIMENSIONS) *
+        scaleFactor;
       canvas.width = width;
       canvas.height = height;
 
       const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingQuality = "high";
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
+      // Create final canvas at correct size
+      const finalCanvas = document.createElement("canvas");
+      finalCanvas.width = cmToPx(
+        dimensions.width,
+        dimensions === IMAGE_DIMENSIONS
+      );
+      finalCanvas.height = cmToPx(
+        dimensions.height,
+        dimensions === IMAGE_DIMENSIONS
+      );
+      const finalCtx = finalCanvas.getContext("2d");
+      finalCtx.imageSmoothingQuality = "high";
+      finalCtx.drawImage(
+        canvas,
+        0,
+        0,
+        width,
+        height,
+        0,
+        0,
+        finalCanvas.width,
+        finalCanvas.height
+      );
+
       let quality = 0.9;
       let blob = await new Promise((res) =>
-        canvas.toBlob(res, "image/jpeg", quality)
+        finalCanvas.toBlob(res, "image/jpeg", quality)
       );
 
       let tries = 0;
@@ -197,8 +253,9 @@ function App() {
       ) {
         quality += blob.size < (dimensions.minSize || 0) ? 0.05 : -0.05;
         quality = Math.min(1, Math.max(0.5, quality));
+        // eslint-disable-next-line no-loop-func
         blob = await new Promise((res) =>
-          canvas.toBlob(res, "image/jpeg", quality)
+          finalCanvas.toBlob(res, "image/jpeg", quality)
         );
         tries++;
       }
@@ -217,9 +274,10 @@ function App() {
         setResized(null);
       } else {
         const url = URL.createObjectURL(blob);
-        setResized(url);
+        setResized({ url, size: blob.size });
       }
     } catch (e) {
+      console.error("Error processing image:", e);
       setError("Image processing failed");
       setResized(null);
     }
@@ -246,19 +304,17 @@ function App() {
 
   const handleDownload = () => {
     if (mode === "image" && resizedImage) {
-      saveAs(resizedImage, "photo.jpg");
+      saveAs(resizedImage.url, "photo.jpg");
     } else if (mode === "signature" && resizedSignature) {
-      saveAs(resizedSignature, "signature.jpg");
+      saveAs(resizedSignature.url, "signature.jpg");
     }
   };
 
   const getFileSize = (src) => {
     if (!src) return "0 KB";
-    // Approximate calculation for data URLs
-    if (src.startsWith("data:")) {
-      return `${Math.round((src.length * 3) / 4 / 1024)} KB`;
-    }
-    return "Calculating...";
+    if (src.size) return `${Math.round(src.size / 1024)} KB`;
+    if (src.url) return "Calculating...";
+    return "0 KB";
   };
 
   return (
@@ -363,17 +419,27 @@ function App() {
           </h3>
           <div className="preview-content">
             {mode === "image" && imageSrc ? (
-              <img
-                src={imageSrc}
-                alt="Original Photo"
-                className="preview-img"
-              />
+              <>
+                <img
+                  src={imageSrc.url || imageSrc}
+                  alt="Original"
+                  className="preview-img"
+                />
+                <div className="specs-display">
+                  <p>File size: {getFileSize(imageSrc)}</p>
+                </div>
+              </>
             ) : mode === "signature" && signatureSrc ? (
-              <img
-                src={signatureSrc}
-                alt="Original Signature"
-                className="preview-img"
-              />
+              <>
+                <img
+                  src={signatureSrc.url || signatureSrc}
+                  alt="Original Signature"
+                  className="preview-img"
+                />
+                <div className="specs-display">
+                  <p>File size: {getFileSize(signatureSrc)}</p>
+                </div>
+              </>
             ) : (
               <div className="preview-placeholder">
                 {mode === "image"
@@ -392,8 +458,8 @@ function App() {
             {mode === "image" && resizedImage ? (
               <>
                 <img
-                  src={resizedImage}
-                  alt="Resized Photo"
+                  src={resizedImage.url}
+                  alt="Resized"
                   className="preview-img"
                 />
                 <div className="specs-display">
@@ -405,7 +471,7 @@ function App() {
             ) : mode === "signature" && resizedSignature ? (
               <>
                 <img
-                  src={resizedSignature}
+                  src={resizedSignature.url}
                   alt="Resized Signature"
                   className="preview-img"
                 />

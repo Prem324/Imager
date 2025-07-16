@@ -137,6 +137,8 @@ body {
   width: 100%;
   height: auto;
   display: block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
 }
 
 .webcam-actions {
@@ -239,6 +241,8 @@ body {
   border: 1px solid var(--border-color);
   margin-bottom: 1rem;
   box-shadow: var(--shadow-sm);
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
 }
 
 .preview-placeholder {
