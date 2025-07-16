@@ -191,40 +191,49 @@ function App() {
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, 'image/jpeg', 0.95)
+
+      let quality = 0.92; // Start with high quality
+      let blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', quality)
       );
-      let compressedBlob = await imageCompression(blob, {
-        maxSizeMB: dimensions.maxSize / 1024 / 1024,
-        maxWidthOrHeight: Math.max(canvas.width, canvas.height),
-        useWebWorker: true,
-        initialQuality: 0.9,
-      });
-      if (compressedBlob.size > dimensions.maxSize) {
-        // Try further compression
-        compressedBlob = await imageCompression(compressedBlob, {
-          maxSizeMB: dimensions.maxSize / 1024 / 1024,
-          maxWidthOrHeight: Math.max(canvas.width, canvas.height),
-          useWebWorker: true,
-          initialQuality: 0.7,
-        });
-      }
-      if (compressedBlob.size > dimensions.maxSize) {
-        setError(
-          `Unable to compress below ${Math.round(dimensions.maxSize / 1024)}KB. Current: ${Math.round(
-            compressedBlob.size / 1024
-          )}KB`
+
+      // Try to get the image between 20KB and 50KB
+      let minSize = 20 * 1024;
+      let maxSize = dimensions.maxSize;
+      let step = 0.02;
+      let maxTries = 20;
+      let tries = 0;
+
+      // If too big, decrease quality
+      while (blob.size > maxSize && quality > 0.1 && tries < maxTries) {
+        quality -= step;
+        blob = await new Promise((resolve) =>
+          canvas.toBlob(resolve, 'image/jpeg', quality)
         );
-        setResized(null);
-      } else if (compressedBlob.size < 20 * 1024) {
+        tries++;
+      }
+
+      // If too small, increase quality
+      while (blob.size < minSize && quality < 0.99 && tries < maxTries) {
+        quality += step;
+        if (quality > 1) quality = 1;
+        blob = await new Promise((resolve) =>
+          canvas.toBlob(resolve, 'image/jpeg', quality)
+        );
+        tries++;
+        // If increasing quality doesn't help, break to avoid infinite loop
+        if (blob.size >= minSize || quality === 1) break;
+      }
+
+      if (blob.size < minSize || blob.size > maxSize) {
         setError(
-          `Image is too small. Minimum allowed size is 20KB. Current: ${Math.round(
-            compressedBlob.size / 1024
+          `Unable to get image between 20KB and 50KB. Final size: ${Math.round(
+            blob.size / 1024
           )}KB`
         );
         setResized(null);
       } else {
-        setResized(URL.createObjectURL(compressedBlob));
+        setResized(URL.createObjectURL(blob));
       }
     } catch (e) {
       setError('Error processing image.');
