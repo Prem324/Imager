@@ -181,3 +181,33 @@ footer {
     padding: 10px 6px 8px 6px;
   }
 }
+
+@media (max-width: 500px) {
+  .main-container {
+    padding: 6px 0 4px 0;
+  }
+  h1 {
+    font-size: 1.3rem;
+  }
+  .mode-switch button {
+    padding: 7px 10px;
+    font-size: 0.95rem;
+  }
+  .webcam-container {
+    padding: 4px 2px 4px 2px;
+  }
+  .preview-block {
+    min-width: 140px;
+    padding: 8px 4px;
+  }
+  .preview-img {
+    width: 90px;
+  }
+  .action-buttons button {
+    padding: 7px 10px;
+    font-size: 0.95rem;
+  }
+  footer {
+    font-size: 0.85rem;
+  }
+}
