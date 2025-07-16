@@ -1,4 +1,3 @@
-// App.js
 import React, { useRef, useState } from "react";
 import Webcam from "react-webcam";
 import { saveAs } from "file-saver";
@@ -10,7 +9,6 @@ const DPI_PHOTO = 100;
 const DPI_SIGNATURE = 95;
 const CM_TO_INCH = 0.393701;
 
-// Calculate pixels per cm
 function getPixelsPerCm(dpi) {
   return dpi * CM_TO_INCH;
 }
@@ -27,6 +25,7 @@ const IMAGE_DIMENSIONS = {
 const SIGNATURE_DIMENSIONS = {
   width: 3.5,
   height: 1.5,
+  minSize: 5 * 1024,
   maxSize: 20 * 1024,
   dpi: DPI_SIGNATURE,
   type: "signature",
@@ -95,19 +94,16 @@ function App() {
     image.src = imageSrc;
     await new Promise((resolve) => (image.onload = resolve));
 
-    // High quality rendering with scale factor
-    const scaleFactor = 2;
+    const scaleFactor = isPhoto ? 2 : 3;
     const canvas = document.createElement("canvas");
     canvas.width = outputWidth * scaleFactor;
     canvas.height = outputHeight * scaleFactor;
     const ctx = canvas.getContext("2d");
 
-    // Set high quality rendering
     ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw image at higher resolution
     ctx.drawImage(
       image,
       cropPixels.x,
@@ -120,14 +116,11 @@ function App() {
       canvas.height
     );
 
-    // Create final canvas at correct size
     const finalCanvas = document.createElement("canvas");
     finalCanvas.width = outputWidth;
     finalCanvas.height = outputHeight;
     const finalCtx = finalCanvas.getContext("2d");
     finalCtx.imageSmoothingQuality = "high";
-
-    // Downscale with high quality
     finalCtx.drawImage(
       canvas,
       0,
@@ -147,7 +140,7 @@ function App() {
           resolve({ url, size: blob.size });
         },
         "image/jpeg",
-        0.92 // Optimal quality setting
+        isPhoto ? 0.92 : 0.95
       );
     });
   };
@@ -199,14 +192,14 @@ function App() {
       img.src = src.url || src;
       await new Promise((resolve) => (img.onload = resolve));
 
-      // High quality rendering with scale factor
-      const scaleFactor = 2;
-      const canvas = document.createElement("canvas");
+      const scaleFactor = dimensions.type === "signature" ? 3 : 2;
       const width =
         cmToPx(dimensions.width, dimensions === IMAGE_DIMENSIONS) * scaleFactor;
       const height =
         cmToPx(dimensions.height, dimensions === IMAGE_DIMENSIONS) *
         scaleFactor;
+
+      const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
 
@@ -216,7 +209,6 @@ function App() {
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Create final canvas at correct size
       const finalCanvas = document.createElement("canvas");
       finalCanvas.width = cmToPx(
         dimensions.width,
@@ -240,44 +232,38 @@ function App() {
         finalCanvas.height
       );
 
-      let quality = 0.9;
+      let quality = dimensions.type === "signature" ? 0.95 : 0.85;
+      const minQuality = dimensions.type === "signature" ? 0.85 : 0.5;
+
       let blob = await new Promise((res) =>
         finalCanvas.toBlob(res, "image/jpeg", quality)
       );
 
-      let tries = 0;
-      while (
-        (blob.size > dimensions.maxSize ||
-          (dimensions.minSize && blob.size < dimensions.minSize)) &&
-        tries < 10
-      ) {
-        quality += blob.size < (dimensions.minSize || 0) ? 0.05 : -0.05;
-        quality = Math.min(1, Math.max(0.5, quality));
-        // eslint-disable-next-line no-loop-func
-        blob = await new Promise((res) =>
-          finalCanvas.toBlob(res, "image/jpeg", quality)
-        );
-        tries++;
+      if (blob.size > dimensions.maxSize) {
+        let tries = 0;
+        while (blob.size > dimensions.maxSize && tries < 5) {
+          quality = Math.max(minQuality, quality - 0.05);
+          // eslint-disable-next-line no-loop-func
+          blob = await new Promise((res) =>
+            finalCanvas.toBlob(res, "image/jpeg", quality)
+          );
+          tries++;
+        }
       }
 
-      if (
-        blob.size > dimensions.maxSize ||
-        (dimensions.minSize && blob.size < dimensions.minSize)
-      ) {
+      if (blob.size > dimensions.maxSize) {
         setError(
-          `File size: ${Math.round(blob.size / 1024)}KB (Requires: ${
-            dimensions.minSize
-              ? `${Math.round(dimensions.minSize / 1024)}-`
-              : ""
-          }${Math.round(dimensions.maxSize / 1024)}KB)`
+          `File size: ${Math.round(blob.size / 1024)}KB (Max ${Math.round(
+            dimensions.maxSize / 1024
+          )}KB)`
         );
         setResized(null);
+      } else if (dimensions.minSize && blob.size < dimensions.minSize) {
+        setResized({ url: URL.createObjectURL(blob), size: blob.size });
       } else {
-        const url = URL.createObjectURL(blob);
-        setResized({ url, size: blob.size });
+        setResized({ url: URL.createObjectURL(blob), size: blob.size });
       }
     } catch (e) {
-      console.error("Error processing image:", e);
       setError("Image processing failed");
       setResized(null);
     }
@@ -434,7 +420,7 @@ function App() {
                 <img
                   src={signatureSrc.url || signatureSrc}
                   alt="Original Signature"
-                  className="preview-img"
+                  className="preview-img signature-preview"
                 />
                 <div className="specs-display">
                   <p>File size: {getFileSize(signatureSrc)}</p>
@@ -473,7 +459,7 @@ function App() {
                 <img
                   src={resizedSignature.url}
                   alt="Resized Signature"
-                  className="preview-img"
+                  className="preview-img signature-preview"
                 />
                 <div className="specs-display">
                   <p>Dimensions: 3.5×1.5 cm</p>
@@ -536,12 +522,12 @@ function App() {
               <li>✔️ JPG format</li>
             </ul>
           </div>
-          <div className="specs-card">
+          <div className="specs-card signature-specs">
             <h4>Signature Requirements</h4>
             <ul>
               <li>✔️ Dimensions: 3.5 cm × 1.5 cm</li>
               <li>✔️ Resolution: {DPI_SIGNATURE} DPI</li>
-              <li>✔️ File size: Under 20KB</li>
+              <li>✔️ File size: 5KB - 20KB</li>
               <li>✔️ White background</li>
               <li>✔️ JPG format</li>
             </ul>
