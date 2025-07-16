@@ -216,6 +216,13 @@ function App() {
           )}KB`
         );
         setResized(null);
+      } else if (compressedBlob.size < 20 * 1024) {
+        setError(
+          `Image is too small. Minimum allowed size is 20KB. Current: ${Math.round(
+            compressedBlob.size / 1024
+          )}KB`
+        );
+        setResized(null);
       } else {
         setResized(URL.createObjectURL(compressedBlob));
       }
