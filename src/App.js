@@ -1,13 +1,10 @@
-import React, { useRef, useState } from 'react';
-import Webcam from 'react-webcam';
-import imageCompression from 'browser-image-compression';
-import { saveAs } from 'file-saver';
-import Cropper from 'react-easy-crop';
-import './App.css';
+import React, { useRef, useState } from "react";
+import Webcam from "react-webcam";
+import { saveAs } from "file-saver";
+import Cropper from "react-easy-crop";
+import "./App.css";
 
-// const CM_TO_PX = 37.8; // 96 DPI
 const CM_TO_PX = 118.11; // 300 DPI
-
 const IMAGE_DIMENSIONS = { width: 3.5, height: 4.5, maxSize: 50 * 1024 }; // cm, bytes
 const SIGNATURE_DIMENSIONS = { width: 3.5, height: 1.5, maxSize: 20 * 1024 }; // cm, bytes
 
@@ -17,24 +14,22 @@ function cmToPx(cm) {
 
 function App() {
   const webcamRef = useRef(null);
+  const [mode, setMode] = useState("image"); // 'image' or 'signature'
   const [imageSrc, setImageSrc] = useState(null);
   const [signatureSrc, setSignatureSrc] = useState(null);
   const [resizedImage, setResizedImage] = useState(null);
   const [resizedSignature, setResizedSignature] = useState(null);
-  const [imageError, setImageError] = useState('');
-  const [signatureError, setSignatureError] = useState('');
-  const [mode, setMode] = useState('image'); // 'image' or 'signature'
+  const [imageError, setImageError] = useState("");
+  const [signatureError, setSignatureError] = useState("");
+  const [facingMode, setFacingMode] = useState("user");
   const [loading, setLoading] = useState(false);
-  const [facingMode, setFacingMode] = useState('user'); // 'user' (front) or 'environment' (back)
 
-  // Cropper states
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [showCropper, setShowCropper] = useState(false);
   const [tempImage, setTempImage] = useState(null);
 
-  // Show cropper after capture/upload
   const handleAfterCaptureOrUpload = (src) => {
     setTempImage(src);
     setShowCropper(true);
@@ -42,18 +37,15 @@ function App() {
     setZoom(1);
   };
 
-  // Webcam capture
   const capture = () => {
-    const imageSrc = webcamRef.current.getScreenshot();
-    handleAfterCaptureOrUpload(imageSrc);
+    const src = webcamRef.current.getScreenshot();
+    handleAfterCaptureOrUpload(src);
   };
 
-  // Camera switch
   const handleSwitchCamera = () => {
-    setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
+    setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
   };
 
-  // File upload
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -64,20 +56,27 @@ function App() {
     reader.readAsDataURL(file);
   };
 
-  // Cropper callbacks
   const onCropComplete = (croppedArea, croppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
   };
 
-  // Get cropped image
-  const getCroppedImg = async (imageSrc, cropPixels) => {
+  const getCroppedImg = async (
+    imageSrc,
+    cropPixels,
+    outputWidth,
+    outputHeight
+  ) => {
     const image = new window.Image();
     image.src = imageSrc;
     await new Promise((resolve) => (image.onload = resolve));
-    const canvas = document.createElement('canvas');
-    canvas.width = cropPixels.width;
-    canvas.height = cropPixels.height;
-    const ctx = canvas.getContext('2d');
+
+    const canvas = document.createElement("canvas");
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(
       image,
       cropPixels.x,
@@ -86,176 +85,116 @@ function App() {
       cropPixels.height,
       0,
       0,
-      cropPixels.width,
-      cropPixels.height
+      outputWidth,
+      outputHeight
     );
-    return canvas.toDataURL('image/jpeg');
+    return canvas.toDataURL("image/jpeg");
   };
 
-  // Confirm crop
   const handleCropConfirm = async () => {
-    const croppedImg = await getCroppedImg(tempImage, croppedAreaPixels);
+    const widthPx = cmToPx(mode === "image" ? 3.5 : 3.5);
+    const heightPx = cmToPx(mode === "image" ? 4.5 : 1.5);
+    const croppedImg = await getCroppedImg(
+      tempImage,
+      croppedAreaPixels,
+      widthPx,
+      heightPx
+    );
     setShowCropper(false);
     setTempImage(null);
-    if (mode === 'image') {
+    if (mode === "image") {
       setImageSrc(croppedImg);
       setResizedImage(null);
-      setImageError('');
+      setImageError("");
     } else {
       setSignatureSrc(croppedImg);
       setResizedSignature(null);
-      setSignatureError('');
+      setSignatureError("");
     }
   };
 
-  // Cancel crop
   const handleCropCancel = () => {
     setShowCropper(false);
     setTempImage(null);
   };
 
-  // Auto crop (simple bounding box of non-white pixels)
-  const autoCropImage = async (imageSrc) => {
-    const image = new window.Image();
-    image.src = imageSrc;
-    await new Promise((resolve) => (image.onload = resolve));
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(image, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const i = (y * canvas.width + x) * 4;
-        const [r, g, b, a] = [
-          imageData.data[i],
-          imageData.data[i + 1],
-          imageData.data[i + 2],
-          imageData.data[i + 3]
-        ];
-        // If not white and not transparent
-        if (!(r > 240 && g > 240 && b > 240) && a > 10) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-    // Add a small margin
-    minX = Math.max(minX - 5, 0);
-    minY = Math.max(minY - 5, 0);
-    maxX = Math.min(maxX + 5, canvas.width);
-    maxY = Math.min(maxY + 5, canvas.height);
-
-    const cropWidth = maxX - minX;
-    const cropHeight = maxY - minY;
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = cropWidth;
-    cropCanvas.height = cropHeight;
-    const cropCtx = cropCanvas.getContext('2d');
-    cropCtx.drawImage(canvas, minX, minY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-    return cropCanvas.toDataURL('image/jpeg');
-  };
-
-  // Handle auto crop
-  const handleAutoCrop = async () => {
-    if (!tempImage) return;
-    const croppedImg = await autoCropImage(tempImage);
-    setShowCropper(false);
-    setTempImage(null);
-    if (mode === 'image') {
-      setImageSrc(croppedImg);
-      setResizedImage(null);
-      setImageError('');
-    } else {
-      setSignatureSrc(croppedImg);
-      setResizedSignature(null);
-      setSignatureError('');
-    }
-  };
-
-  // Resize and compress
   const resizeAndCompress = async (src, dimensions, setResized, setError) => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       const img = new window.Image();
       img.src = src;
       await new Promise((resolve) => (img.onload = resolve));
-      const canvas = document.createElement('canvas');
-      canvas.width = cmToPx(dimensions.width);
-      canvas.height = cmToPx(dimensions.height);
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      let quality = 0.92; // Start with high quality
-      let blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, 'image/jpeg', quality)
+      const canvas = document.createElement("canvas");
+      const width = cmToPx(dimensions.width);
+      const height = cmToPx(dimensions.height);
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      let quality = 0.9;
+      let blob = await new Promise((res) =>
+        canvas.toBlob(res, "image/jpeg", quality)
       );
-
-      // Try to get the image between 20KB and 50KB
-      let minSize = 20 * 1024;
-      let maxSize = dimensions.maxSize;
-      let step = 0.02;
-      let maxTries = 20;
       let tries = 0;
 
-      // If too big, decrease quality
-      while (blob.size > maxSize && quality > 0.1 && tries < maxTries) {
-        quality -= step;
-        blob = await new Promise((resolve) =>
-          canvas.toBlob(resolve, 'image/jpeg', quality)
+      while (
+        (blob.size > dimensions.maxSize || blob.size < 10 * 1024) &&
+        tries < 20
+      ) {
+        quality += blob.size < 10 * 1024 ? 0.05 : -0.05;
+        quality = Math.min(1, Math.max(0.1, quality));
+        blob = await new Promise((res) =>
+          canvas.toBlob(res, "image/jpeg", quality)
         );
         tries++;
       }
 
-      // If too small, increase quality
-      while (blob.size < minSize && quality < 0.99 && tries < maxTries) {
-        quality += step;
-        if (quality > 1) quality = 1;
-        blob = await new Promise((resolve) =>
-          canvas.toBlob(resolve, 'image/jpeg', quality)
-        );
-        tries++;
-        // If increasing quality doesn't help, break to avoid infinite loop
-        if (blob.size >= minSize || quality === 1) break;
-      }
-
-      if (blob.size < minSize || blob.size > maxSize) {
+      if (blob.size > dimensions.maxSize || blob.size < 10 * 1024) {
         setError(
-          `Unable to get image between 20KB and 50KB. Final size: ${Math.round(
+          `Final image size: ${Math.round(
             blob.size / 1024
-          )}KB`
+          )}KB. Not within limit.`
         );
         setResized(null);
       } else {
         setResized(URL.createObjectURL(blob));
       }
     } catch (e) {
-      setError('Error processing image.');
+      setError("Image processing failed.");
       setResized(null);
     }
     setLoading(false);
   };
 
   const handleResize = () => {
-    if (mode === 'image' && imageSrc) {
-      resizeAndCompress(imageSrc, IMAGE_DIMENSIONS, setResizedImage, setImageError);
-    } else if (mode === 'signature' && signatureSrc) {
-      resizeAndCompress(signatureSrc, SIGNATURE_DIMENSIONS, setResizedSignature, setSignatureError);
+    if (mode === "image" && imageSrc) {
+      resizeAndCompress(
+        imageSrc,
+        IMAGE_DIMENSIONS,
+        setResizedImage,
+        setImageError
+      );
+    } else if (mode === "signature" && signatureSrc) {
+      resizeAndCompress(
+        signatureSrc,
+        SIGNATURE_DIMENSIONS,
+        setResizedSignature,
+        setSignatureError
+      );
     }
   };
 
   const handleDownload = () => {
-    if (mode === 'image' && resizedImage) {
-      saveAs(resizedImage, 'photo.jpg');
-    } else if (mode === 'signature' && resizedSignature) {
-      saveAs(resizedSignature, 'signature.jpg');
+    if (mode === "image" && resizedImage) {
+      saveAs(resizedImage, "photo.jpg");
+    } else if (mode === "signature" && resizedSignature) {
+      saveAs(resizedSignature, "signature.jpg");
     }
   };
 
@@ -269,41 +208,37 @@ function App() {
                 image={tempImage}
                 crop={crop}
                 zoom={zoom}
-                aspect={mode === 'image' ? 3.5 / 4.5 : 3.5 / 1.5}
+                aspect={mode === "image" ? 3.5 / 4.5 : 3.5 / 1.5}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={onCropComplete}
               />
             </div>
             <div className="cropper-actions">
-              <button className="cropper-done-btn" onClick={handleCropConfirm}>
-                Crop Done
-              </button>
-              <button className="cropper-auto-btn" onClick={handleAutoCrop}>
-                Auto Crop
-              </button>
-              <button className="cropper-cancel-btn" onClick={handleCropCancel}>
-                Cancel
-              </button>
+              <button onClick={handleCropConfirm}>Crop Done</button>
+              <button onClick={handleCropCancel}>Cancel</button>
             </div>
           </div>
         </div>
       )}
-      <h1>Image & Signature Resizer</h1>
+
+      <h1>ID Photo & Signature Maker</h1>
+
       <div className="mode-switch">
         <button
-          className={mode === 'image' ? 'active' : ''}
-          onClick={() => setMode('image')}
+          className={mode === "image" ? "active" : ""}
+          onClick={() => setMode("image")}
         >
-          Photo (3.5 x 4.5 cm, ≤50KB)
+          Photo (3.5 x 4.5 cm)
         </button>
         <button
-          className={mode === 'signature' ? 'active' : ''}
-          onClick={() => setMode('signature')}
+          className={mode === "signature" ? "active" : ""}
+          onClick={() => setMode("signature")}
         >
-          Signature (3.5 x 1.5 cm, ≤20KB)
+          Signature (3.5 x 1.5 cm)
         </button>
       </div>
+
       <div className="webcam-container">
         <Webcam
           audio={false}
@@ -314,50 +249,68 @@ function App() {
           videoConstraints={{ facingMode }}
         />
         <div className="webcam-actions">
-          <button className="capture-btn" onClick={capture} disabled={loading}>
-            Capture {mode === 'image' ? 'Photo' : 'Signature'}
-          </button>
-          <button className="switch-btn" onClick={handleSwitchCamera} type="button">
-            Switch Camera
-          </button>
-          <label className="upload-label">
+          <button onClick={capture}>Capture</button>
+          <button onClick={handleSwitchCamera}>Switch Camera</button>
+          <label>
             <input
               type="file"
               accept="image/*"
               onChange={handleFileUpload}
-              style={{ display: 'none' }}
+              hidden
             />
             Upload from Device
           </label>
         </div>
       </div>
+
       <div className="preview-section">
         <div className="preview-block">
-          <h3>Original {mode === 'image' ? 'Photo' : 'Signature'}</h3>
-          {mode === 'image' && imageSrc && <img src={imageSrc} alt="Captured" className="preview-img" />}
-          {mode === 'signature' && signatureSrc && <img src={signatureSrc} alt="Signature" className="preview-img" />}
+          <h3>Original</h3>
+          {mode === "image" && imageSrc && (
+            <img src={imageSrc} alt="Ph" className="preview-img" />
+          )}
+          {mode === "signature" && signatureSrc && (
+            <img src={signatureSrc} alt="Signature" className="preview-img" />
+          )}
         </div>
         <div className="preview-block">
-          <h3>Resized & Compressed</h3>
-          {mode === 'image' && resizedImage && <img src={resizedImage} alt="Resized" className="preview-img" />}
-          {mode === 'signature' && resizedSignature && <img src={resizedSignature} alt="Resized Signature" className="preview-img" />}
-          {(imageError && mode === 'image') && <div className="error-msg">{imageError}</div>}
-          {(signatureError && mode === 'signature') && <div className="error-msg">{signatureError}</div>}
+          <h3>Resized</h3>
+          {mode === "image" && resizedImage && (
+            <img src={resizedImage} alt="Resized" className="preview-img" />
+          )}
+          {mode === "signature" && resizedSignature && (
+            <img
+              src={resizedSignature}
+              alt="Resized Signature"
+              className="preview-img"
+            />
+          )}
+          {imageError && mode === "image" && (
+            <p className="error-msg">{imageError}</p>
+          )}
+          {signatureError && mode === "signature" && (
+            <p className="error-msg">{signatureError}</p>
+          )}
         </div>
       </div>
+
       <div className="action-buttons">
-        <button onClick={handleResize} disabled={loading || (mode === 'image' ? !imageSrc : !signatureSrc)}>
-          {loading ? 'Processing...' : 'Resize & Compress'}
+        <button
+          onClick={handleResize}
+          disabled={loading || (!imageSrc && !signatureSrc)}
+        >
+          {loading ? "Processing..." : "Resize & Compress"}
         </button>
         <button
           onClick={handleDownload}
-          disabled={loading || (mode === 'image' ? !resizedImage : !resizedSignature)}
+          disabled={loading || (!resizedImage && !resizedSignature)}
         >
           Download JPG
         </button>
       </div>
+
       <footer>
-        <p>Made with ❤️ for easy image & signature resizing</p>
+        <p>Created to meet strict exam photo & signature upload requirements</p>
       </footer>
     </div>
   );
