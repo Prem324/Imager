@@ -5,7 +5,8 @@ import { saveAs } from 'file-saver';
 import Cropper from 'react-easy-crop';
 import './App.css';
 
-const CM_TO_PX = 37.8; // 1 cm ≈ 37.8 px at 96 DPI (screen standard)
+// const CM_TO_PX = 37.8; // 96 DPI
+const CM_TO_PX = 118.11; // 1 cm ≈ 118.11 px at 300 DPI (print standard)
 
 const IMAGE_DIMENSIONS = { width: 3.5, height: 4.5, maxSize: 50 * 1024 }; // cm, bytes
 const SIGNATURE_DIMENSIONS = { width: 3.5, height: 1.5, maxSize: 20 * 1024 }; // cm, bytes
