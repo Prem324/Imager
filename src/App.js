@@ -4,6 +4,7 @@ import imageCompression from 'browser-image-compression';
 import { saveAs } from 'file-saver';
 import Cropper from 'react-easy-crop';
 import './App.css';
+import piexif from "piexifjs";
 
 // const CM_TO_PX = 37.8; // 96 DPI
 const CM_TO_PX = 118.11; // 1 cm ≈ 118.11 px at 300 DPI (print standard)
@@ -222,19 +223,48 @@ function App() {
           canvas.toBlob(resolve, 'image/jpeg', quality)
         );
         tries++;
-        // If increasing quality doesn't help, break to avoid infinite loop
         if (blob.size >= minSize || quality === 1) break;
       }
 
-      if (blob.size < minSize || blob.size > maxSize) {
+      // Convert blob to data URL
+      const jpegDataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+
+      // Inject 300 DPI metadata using piexifjs
+      const dpi = 300;
+      let zeroth = {};
+      zeroth[piexif.ImageIFD.XResolution] = [dpi, 1];
+      zeroth[piexif.ImageIFD.YResolution] = [dpi, 1];
+      zeroth[piexif.ImageIFD.ResolutionUnit] = 2; // inches
+
+      let exifObj = { "0th": zeroth };
+      let exifBytes = piexif.dump(exifObj);
+      let newDataUrl = piexif.insert(exifBytes, jpegDataUrl);
+
+      // Convert newDataUrl to blob for download
+      function dataURLtoBlob(dataurl) {
+        var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+          bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new Blob([u8arr], { type: mime });
+      }
+
+      const finalBlob = dataURLtoBlob(newDataUrl);
+
+      if (finalBlob.size < minSize || finalBlob.size > maxSize) {
         setError(
           `Unable to get image between 20KB and 50KB. Final size: ${Math.round(
-            blob.size / 1024
+            finalBlob.size / 1024
           )}KB`
         );
         setResized(null);
       } else {
-        setResized(URL.createObjectURL(blob));
+        setResized(URL.createObjectURL(finalBlob));
       }
     } catch (e) {
       setError('Error processing image.');
@@ -243,124 +273,107 @@ function App() {
     setLoading(false);
   };
 
-  const handleResize = () => {
-    if (mode === 'image' && imageSrc) {
-      resizeAndCompress(imageSrc, IMAGE_DIMENSIONS, setResizedImage, setImageError);
-    } else if (mode === 'signature' && signatureSrc) {
-      resizeAndCompress(signatureSrc, SIGNATURE_DIMENSIONS, setResizedSignature, setSignatureError);
-    }
-  };
-
-  const handleDownload = () => {
-    if (mode === 'image' && resizedImage) {
-      saveAs(resizedImage, 'photo.jpg');
-    } else if (mode === 'signature' && resizedSignature) {
-      saveAs(resizedSignature, 'signature.jpg');
-    }
-  };
-
   return (
-    <div className="main-container">
-      {showCropper && (
-        <div className="cropper-modal">
-          <div className="cropper-container">
-            <div className="cropper-area">
-              <Cropper
-                image={tempImage}
-                crop={crop}
-                zoom={zoom}
-                aspect={mode === 'image' ? 3.5 / 4.5 : 3.5 / 1.5}
-                onCropChange={setCrop}
-                onZoomChange={setZoom}
-                onCropComplete={onCropComplete}
-              />
-            </div>
-            <div className="cropper-actions">
-              <button className="cropper-done-btn" onClick={handleCropConfirm}>
-                Crop Done
-              </button>
-              <button className="cropper-auto-btn" onClick={handleAutoCrop}>
-                Auto Crop
-              </button>
-              <button className="cropper-cancel-btn" onClick={handleCropCancel}>
-                Cancel
-              </button>
-            </div>
+    <div className="App">
+      <header className="App-header">
+        <h1>Image Cropper and Resizer</h1>
+        <p>Upload an image or take a photo to crop and resize.</p>
+
+        <div className="mode-selector">
+          <button onClick={() => setMode('image')} className={mode === 'image' ? 'active' : ''}>
+            Image Mode
+          </button>
+          <button onClick={() => setMode('signature')} className={mode === 'signature' ? 'active' : ''}>
+            Signature Mode
+          </button>
+        </div>
+
+        <div className="upload-section">
+          <input type="file" accept="image/*" onChange={handleFileUpload} />
+          <button onClick={capture} disabled={loading}>
+            {loading ? 'Capturing...' : 'Take Photo'}
+          </button>
+        </div>
+
+        {imageSrc && (
+          <div className="image-preview">
+            <h2>Preview</h2>
+            <img src={imageSrc} alt="Preview" />
+            <button onClick={handleAutoCrop} disabled={loading}>
+              Auto Crop
+            </button>
+            <button onClick={handleCropConfirm} disabled={loading}>
+              Confirm Crop
+            </button>
+            <button onClick={handleCropCancel} disabled={loading}>
+              Cancel Crop
+            </button>
           </div>
+        )}
+
+        {signatureSrc && (
+          <div className="image-preview">
+            <h2>Preview</h2>
+            <img src={signatureSrc} alt="Preview" />
+            <button onClick={handleAutoCrop} disabled={loading}>
+              Auto Crop
+            </button>
+            <button onClick={handleCropConfirm} disabled={loading}>
+              Confirm Crop
+            </button>
+            <button onClick={handleCropCancel} disabled={loading}>
+              Cancel Crop
+            </button>
+          </div>
+        )}
+
+        {showCropper && tempImage && (
+          <Cropper
+            image={tempImage}
+            crop={crop}
+            zoom={zoom}
+            aspect={1} // Square crop
+            onCropChange={setCrop}
+            onCropComplete={onCropComplete}
+            onZoomChange={setZoom}
+          />
+        )}
+
+        {imageError && <p style={{ color: 'red' }}>{imageError}</p>}
+        {signatureError && <p style={{ color: 'red' }}>{signatureError}</p>}
+
+        <div className="image-actions">
+          {imageSrc && (
+            <button onClick={() => resizeAndCompress(imageSrc, IMAGE_DIMENSIONS, setResizedImage, setImageError)} disabled={loading}>
+              Resize Image
+            </button>
+          )}
+          {signatureSrc && (
+            <button onClick={() => resizeAndCompress(signatureSrc, SIGNATURE_DIMENSIONS, setResizedSignature, setSignatureError)} disabled={loading}>
+              Resize Signature
+            </button>
+          )}
         </div>
-      )}
-      <h1>Image & Signature Resizer</h1>
-      <div className="mode-switch">
-        <button
-          className={mode === 'image' ? 'active' : ''}
-          onClick={() => setMode('image')}
-        >
-          Photo (3.5 x 4.5 cm, ≤50KB)
-        </button>
-        <button
-          className={mode === 'signature' ? 'active' : ''}
-          onClick={() => setMode('signature')}
-        >
-          Signature (3.5 x 1.5 cm, ≤20KB)
-        </button>
-      </div>
-      <div className="webcam-container">
-        <Webcam
-          audio={false}
-          ref={webcamRef}
-          screenshotFormat="image/jpeg"
-          width={320}
-          height={240}
-          videoConstraints={{ facingMode }}
-        />
-        <div className="webcam-actions">
-          <button className="capture-btn" onClick={capture} disabled={loading}>
-            Capture {mode === 'image' ? 'Photo' : 'Signature'}
-          </button>
-          <button className="switch-btn" onClick={handleSwitchCamera} type="button">
-            Switch Camera
-          </button>
-          <label className="upload-label">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-            Upload from Device
-          </label>
-        </div>
-      </div>
-      <div className="preview-section">
-        <div className="preview-block">
-          <h3>Original {mode === 'image' ? 'Photo' : 'Signature'}</h3>
-          {mode === 'image' && imageSrc && <img src={imageSrc} alt="Captured" className="preview-img" />}
-          {mode === 'signature' && signatureSrc && <img src={signatureSrc} alt="Signature" className="preview-img" />}
-        </div>
-        <div className="preview-block">
-          <h3>Resized & Compressed</h3>
-          {mode === 'image' && resizedImage && <img src={resizedImage} alt="Resized" className="preview-img" />}
-          {mode === 'signature' && resizedSignature && <img src={resizedSignature} alt="Resized Signature" className="preview-img" />}
-          {(imageError && mode === 'image') && <div className="error-msg">{imageError}</div>}
-          {(signatureError && mode === 'signature') && <div className="error-msg">{signatureError}</div>}
-        </div>
-      </div>
-      <div className="action-buttons">
-        <button onClick={handleResize} disabled={loading || (mode === 'image' ? !imageSrc : !signatureSrc)}>
-          {loading ? 'Processing...' : 'Resize & Compress'}
-        </button>
-        <button
-          onClick={handleDownload}
-          disabled={loading || (mode === 'image' ? !resizedImage : !resizedSignature)}
-        >
-          Download JPG
-        </button>
-      </div>
-      <footer>
-        <p>Made with ❤️ for easy image & signature resizing</p>
-      </footer>
+
+        {resizedImage && (
+          <div className="image-preview">
+            <h2>Resized Image</h2>
+            <img src={resizedImage} alt="Resized" />
+            <a href={resizedImage} download="cropped_image.jpg">Download</a>
+          </div>
+        )}
+
+        {resizedSignature && (
+          <div className="image-preview">
+            <h2>Resized Signature</h2>
+            <img src={resizedSignature} alt="Resized" />
+            <a href={resizedSignature} download="cropped_signature.jpg">Download</a>
+          </div>
+        )}
+      </header>
     </div>
   );
 }
 
 export default App;
+   

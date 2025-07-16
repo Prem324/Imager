@@ -9,6 +9,7 @@
     "@testing-library/user-event": "^13.5.0",
     "browser-image-compression": "^2.0.2",
     "file-saver": "^2.0.5",
+    "piexifjs": "^1.0.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-easy-crop": "^5.5.0",
