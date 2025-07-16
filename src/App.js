@@ -23,6 +23,7 @@ function App() {
   const [signatureError, setSignatureError] = useState('');
   const [mode, setMode] = useState('image'); // 'image' or 'signature'
   const [loading, setLoading] = useState(false);
+  const [facingMode, setFacingMode] = useState('user'); // 'user' (front) or 'environment' (back)
 
   const capture = () => {
     const imageSrc = webcamRef.current.getScreenshot();
@@ -35,6 +36,30 @@ function App() {
       setResizedSignature(null);
       setSignatureError('');
     }
+  };
+
+  // Handle camera switch
+  const handleSwitchCamera = () => {
+    setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
+  };
+
+  // Handle file upload
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (mode === 'image') {
+        setImageSrc(event.target.result);
+        setResizedImage(null);
+        setImageError('');
+      } else {
+        setSignatureSrc(event.target.result);
+        setResizedSignature(null);
+        setSignatureError('');
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const resizeAndCompress = async (src, dimensions, setResized, setError) => {
@@ -126,11 +151,25 @@ function App() {
           screenshotFormat="image/jpeg"
           width={320}
           height={240}
-          videoConstraints={{ facingMode: 'user' }}
+          videoConstraints={{ facingMode }}
         />
-        <button className="capture-btn" onClick={capture} disabled={loading}>
-          Capture {mode === 'image' ? 'Photo' : 'Signature'}
-        </button>
+        <div className="webcam-actions">
+          <button className="capture-btn" onClick={capture} disabled={loading}>
+            Capture {mode === 'image' ? 'Photo' : 'Signature'}
+          </button>
+          <button className="switch-btn" onClick={handleSwitchCamera} type="button">
+            Switch Camera
+          </button>
+          <label className="upload-label">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+            Upload from Device
+          </label>
+        </div>
       </div>
       <div className="preview-section">
         <div className="preview-block">
